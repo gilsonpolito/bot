@@ -9,6 +9,12 @@ import (
 	"golang.org/x/oauth2"
 )
 
+const (
+	open              = "open"
+	approved          = "APPROVED"
+	numberOfApprovals = 2
+)
+
 type GH struct {
 	client *gh.Client
 }
@@ -49,4 +55,33 @@ func (g *GH) ListPullRequests(ctx context.Context, owner, repo, state string) ([
 	}
 
 	return prs, nil
+}
+
+func (g *GH) ListPullRequestsWithoutTwoApproved(ctx context.Context, owner, repo, state string) ([]*gh.PullRequest, error) {
+	prs, err := g.ListPullRequests(ctx, owner, repo, open)
+	if err != nil {
+		return nil, err
+	}
+
+	ret := make([]*gh.PullRequest, 0)
+	for _, pr := range prs {
+		rev, _, err := g.client.PullRequests.ListReviews(ctx, owner, repo, pr.GetNumber(), nil)
+		if err != nil {
+			return nil, err
+		}
+		count := 0
+		for _, r := range rev {
+			if *r.State == approved {
+				count++
+				if count == numberOfApprovals {
+					break
+				}
+			}
+		}
+		if count < 2 {
+			ret = append(ret, pr)
+		}
+	}
+
+	return ret, nil
 }
